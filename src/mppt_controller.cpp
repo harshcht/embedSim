@@ -2,7 +2,7 @@
 #include <stdio.h>
 mppt_controller :: mppt_controller(double _vstep){
     this->vstep = _vstep;
-    this->v_ref = 37;
+    this->v_ref = 40;
 }
 
 

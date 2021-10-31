@@ -239,8 +239,6 @@ class boost_converter :
         putNodeVal(self.nd_out, self.vo)
         if(vpv < 0) :
             vpv = 0
-        if(vpv > 50) :
-            vpv = 50
         self.t_pre = time
         putNodeVal(self.nd_vpv, vpv)
 
