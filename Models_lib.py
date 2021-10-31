@@ -10,7 +10,7 @@ global_time_passed = 0
 recorded_nodes = []
 simulation_time = []
 
-interface = cdll.LoadLibrary('build/libcontroller.so')
+interface = cdll.LoadLibrary('/home/harsh/embedSim/build/libcontroller.so')
 interface.createNodes.argtypes = [ctypes.c_int]
 interface.createNodes.restype = ctypes.c_void_p
 interface.updateNode.argtypes = [ctypes.c_int, ctypes.c_double]
@@ -20,6 +20,11 @@ interface.Exec.argtypes = [ctypes.c_double]
 interface.getDuty.restype = ctypes.c_double
 interface.getNodeVal.argtypes = [ctypes.c_int]
 interface.getNodeVal.restype = ctypes.c_double
+interface.create_mppt_controller.argtypes = [ctypes.c_double]
+interface.create_mppt_controller.restype = ctypes.c_void_p
+interface.execMPPT.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_void_p]
+interface.getVref.restype = ctypes.c_double
+interface.getVref.argtypes = [ctypes.c_void_p]
 
 
 
@@ -161,54 +166,112 @@ class controller :
         putNodeVal(self.duty_node, interface.getDuty())
 
     def assignNodes(self, vref, vout):
-        print("assign out :", vout)
+
         interface.assignNodeNum(vref , vout)
 
-#create ndoes 
-#for this example we need 3 nodes
-#the nodes are identified by integers from 0 to num-1
-#syntax : createNodes(num)
-#   num = number of nodes needed
-
-nodes = createNodes(4)
-
-#create pwm source
-#syntax Clock(time_period, duty_node, output_node, von, voff)
-#   time_period : time period of the pulse
-#   duty_node : node which defines the duty cycle
-#   output_node : node which defines the output
-#   von : output when the state of the clock is high
-#   voff : output when the state of the clock is low
-clk = Clock(0.0001, 2, 0, 10, 0)
-
-#rLC filter of the converter
-#syntax : rLC(l, c, r, in_node, out_node)
-#   l : inductance
-#   c : capacitance
-#   r : switch resistance
-#   in_node : input node number
-#   out_node : output node number
-converter= rLC(0.001, 0.00005, 1, 0, 1)
+q_by_k = 11594
+class PV_Source:
+    nd_p = 0
+    nd_n = 0
+    nd_i = 0
+    Isc = 0
+    Voc = 0
+    n = 1
+    temp = 300
+    def __init__(self, pos, neg, i, isc, voc, n):
+        self.nd_p = pos
+        self.nd_n = neg
+        self.nd_i = i
+        self.Isc = isc
+        self.Voc = voc
+        self.n = n
+        parts.append(self)
+    def Exec(self, time):
+        vpv = getNodeValue(self.nd_p) - getNodeValue(self.nd_n)
+        #print(vpv)
+        ipv = self.Isc * (1 - math.exp(q_by_k * (vpv - self.Voc) / (self.n * self.temp)))
+        #ipv = vpv * 0
+        putNodeVal(self.nd_i, ipv)
 
 
-ctrl = controller(1, 0.0001, 2)
-ctrl.assignNodes(3, 1)
-#put value on a given node defined by it's node number
-#syntax : putNodeVal(node_num, val)
-#   node_num : number of the node
-#   val : float value to be assigned
-putNodeVal(3, 4)
 
-#execute the simulation
-#this will automatically execute all the aprts 
-#in this example we have 2 parts, rLC and clock
-#syntax : execAll(time_div, duration)
-#   time_div : time division for simulation
-#   duration : duration for which the simulation is supposed to last
-execAll(0.0000001, 2)
+class boost_converter :
+    L = 0
+    C1 = 0
+    C2 = 0
+    r = 1
+    R = 100
+    nd_out = 0
+    nd_pwm = 0
+    nd_vpv = 0
+    nd_ipv = 0
+    t_pre = 0
+    iL = 0
+    vo = 0
+    def __init__(self, l, c1, c2, r, R, out, pwm, nd_v, nd_i):
+        self.L = l
+        self.C1 = c1
+        self.C2 = c2
+        self.r = self.r
+        self.R = R
+        self.nd_out = out
+        self.nd_pwm = pwm
+        self.nd_vpv = nd_v
+        self.nd_ipv = nd_i
+        parts.append(self)
 
-plt.plot(simulation_time, recorded_nodes[0])
-plt.plot(simulation_time, recorded_nodes[1])
-plt.ylabel("voltage (V)")
-plt.xlabel("time (s)")
-plt.show()
+    def Exec(self, time):
+        dt = time - self.t_pre
+        switch_state = getNodeValue(self.nd_pwm)
+        vpv = getNodeValue(self.nd_vpv)
+        ipv = getNodeValue(self.nd_ipv)
+        #print("dt : ", dt, "vpv : ", vpv, "vo : ", self.vo, "nd_pv", self.nd_vpv, "iL_cache : ", self.iL, "ipv : ", ipv, "time : ", time)
+        iL_cache = self.iL
+        if(switch_state):
+            self.iL += (dt / self.L) * (vpv - self.iL * self.r - self.vo)
+            vpv += (dt / self.C1) * (ipv - iL_cache)
+            self.vo += (dt / self.C2) * (iL_cache - self.vo / self.R)
+
+        else:
+            self.iL += (dt / self.L) * (vpv - self.iL * self.r)
+            vpv += (dt / self.C1) * (ipv - iL_cache)
+            self.vo += (dt / self.C2) * (- self.vo / self.R)
+        putNodeVal(self.nd_out, self.vo)
+        if(vpv < 0) :
+            vpv = 0
+        if(vpv > 50) :
+            vpv = 50
+        self.t_pre = time
+        putNodeVal(self.nd_vpv, vpv)
+
+
+
+class mppt_controller :
+    mppt_obj = 0
+    time_interval = 0
+    t_pre = 0
+    node_v = 0
+    node_i = 0
+    node_out = 0
+    def __init__(self, vstep, interval, nd_v, nd_i, nd_out) :
+        self.mppt_obj = interface.create_mppt_controller(vstep)
+        self.time_interval = interval
+        self.node_v = nd_v
+        self.node_i = nd_i
+        self.node_out = nd_out
+        parts.append(self)
+        
+    def Exec(self, time):
+        dt = time - self.t_pre
+        vin = getNodeValue(self.node_v)
+        iin = getNodeValue(self.node_i)
+        if(dt  > self.time_interval):
+            interface.execMPPT(time, vin, iin, self.mppt_obj)
+            self.t_pre = time
+
+        putNodeVal(self.node_out, interface.getVref(self.mppt_obj))
+
+
+
+
+        

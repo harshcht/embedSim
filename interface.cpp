@@ -1,4 +1,5 @@
 #include "src/controller.hpp"
+#include "src/mppt_controller.hpp"
 #include <stdio.h>
 double sampling_time = 0;
 double * nodes;
@@ -21,17 +22,24 @@ extern "C"
     void assignNodeNum(int _vref, int _vout){
         vref = _vref;
         vout = _vout;
-        printf("\nout : %d", _vout);
     }
     void  create_controller(double _gain, double _sampling_time){
         gain = _gain;
         sampling_time = _sampling_time;
     }
     void Exec(double time){
-        printf("\ntime : %f, refnum : %d, outnum : %d", time, vref, vout);
         updateDuty(nodes[vref], nodes[vout]);
     }
     double getDuty(){
         return duty;
+    }
+    mppt_controller * create_mppt_controller(double vstep){
+        return new mppt_controller(vstep);
+    }
+    void execMPPT(double time, double vin, double iin, mppt_controller * _this){
+        _this->exec(time, vin, iin);
+    }
+    double getVref(mppt_controller * _this){
+        return _this->getVref();
     }
 }
