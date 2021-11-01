@@ -21,7 +21,7 @@ sine_pwm_controller :: updateOutput(double time){
 
 void
 sine_pwm_controller :: updateDutyCycle(double Vin, double Vref, double time){
-    static double t_pre = 0, ph_t_pre, vrms_pre, phase_shift = 0.025, pll_gain  = 0.005, ref_a = 40;
+    static double t_pre = 0, ph_t_pre, vrms_pre, phase_shift = 50, pll_gain  = 500, ref_a = 40;
     static double dt = 0, ph_dt = 0;
     static double vref = 0, delayed_vref = 0;
     double errar_A;
@@ -45,13 +45,13 @@ sine_pwm_controller :: updateDutyCycle(double Vin, double Vref, double time){
             this->v_buff.erase(this->v_buff.begin());
         }*/
         delayed_vref = Vref;
-        updateAverage(&buff, pow(delayed_vref - Vin, 2), BUFF_SIZE, rms);
-        updateAverage(&buff_in, pow(Vin,2), BUFF_SIZE, rms_in);
+        updateAverage(&buff, pow(delayed_vref - Vin, 2), BUFF_SIZE, rms);//error buffer
+        updateAverage(&buff_in, pow(Vin,2), BUFF_SIZE, rms_in);//input voltage buffer (input to controller is output of the converter)
         updateAverage(&buff_ref, pow(delayed_vref, 2), BUFF_SIZE, rms_ref);
         if(buff.size() >= BUFF_SIZE){
             errar_A = rms_ref - rms_in;
             ref_a += 0.1 * errar_A * this->sample_time;
-            //printf("\ntime : %f, ref_rms : %f, ref _in : %f, v_in : %f", time, rms_ref, rms_in, Vin);
+            //printf("\ntime : %f, ref_rms : %f, ref _in : %f, v_in : %f, duty : %f, ref_a : %f", time, rms_ref, rms_in, Vin, this->duty_cycle, ref_a);
             if(fabs(errar_A) < 20){
                 ph_dt = time - ph_t_pre;
                 if(ph_dt > BUFF_SIZE * this->sample_time){
@@ -60,11 +60,12 @@ sine_pwm_controller :: updateDutyCycle(double Vin, double Vref, double time){
                         pll_gain = -pll_gain;
                         phase_shift = -phase_shift;
                     }
-                    phase += pll_gain * rms;
+                    //phase += pll_gain * rms;
+                    phase += pll_gain * atan(rms) * dt;
                     vrms_pre = rms;
                     ph_dt = 0;
                     ph_t_pre = time;
-                    printf("\nrms : %f, time : %f, Vref - Vin: %f, phase : %f", rms, time, delayed_vref - Vin, phase);
+                    printf("\nrms : %f, time : %f, Vref - Vin: %f, phase : %f, dt : %f", rms, time, delayed_vref - Vin, phase, dt);
                 }
             } 
  

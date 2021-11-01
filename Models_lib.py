@@ -9,7 +9,7 @@ import math
 global_time_passed = 0
 recorded_nodes = []
 simulation_time = []
-
+pi = 3.14159265
 interface = cdll.LoadLibrary('/home/harsh/embedSim/build/libcontroller.so')
 interface.createNodes.argtypes = [ctypes.c_int]
 interface.createNodes.restype = ctypes.c_void_p
@@ -25,8 +25,11 @@ interface.create_mppt_controller.restype = ctypes.c_void_p
 interface.execMPPT.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_void_p]
 interface.getVref.restype = ctypes.c_double
 interface.getVref.argtypes = [ctypes.c_void_p]
-
-
+interface.createController.argtypes = [ctypes.c_double, ctypes.c_double]
+interface.createController.restype = ctypes.c_void_p
+interface.updateDuty.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_void_p, ctypes.c_double]
+interface.getDutyInverter.argtypes = [ctypes.c_void_p]
+interface.getDutyInverter.restype = ctypes.c_double
 
 parts = []
 
@@ -270,6 +273,45 @@ class mppt_controller :
         putNodeVal(self.node_out, interface.getVref(self.mppt_obj))
 
 
+class inverter_controller : 
+    sampling_time = 0
+    nd_in  = 0
+    nd_out = 0
+    nd_ref = 0
+    controller_obj = None
+    nd_duty = 0
+    def __init__(self, sampling_time, nd_in, nd_out, nd_ref, nd_duty) :
+        self.sampling_time = sampling_time
+        self.nd_in = nd_in
+        self.nd_ref = nd_ref
+        self.nd_out = nd_out
+        self.nd_duty = nd_duty
+        self.controller_obj = interface.createController(50, sampling_time)
+        parts.append(self)
+
+    def Exec(self, time):
+        vref  = getNodeValue(self.nd_ref)
+        vin = getNodeValue(self.nd_in)
+        interface.updateDuty(vin, vref, self.controller_obj, time)
+        duty  = interface.getDutyInverter(self.controller_obj)
+        putNodeVal(self.nd_duty, duty)
+
+
+class sine_source :
+    freq = 0
+    node_num = 0
+    amplitude = 0
+    offset  = 0
+    def __init__(self, f,node, amp, off) :
+        self.freq = f
+        self.node_num = node
+        self.amplitude = amp
+        self.offset = off
+        parts.append(self)
+
+    def Exec(self, time) :
+        putNodeVal(self.node_num, self.offset + self.amplitude * math.sin(self.freq * 2 * pi * time))
+        
 
 
         

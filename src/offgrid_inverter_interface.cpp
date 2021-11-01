@@ -20,4 +20,7 @@ extern "C"
     void updateOutput(double time, sine_pwm_controller * controller){
         controller->updateOutput(time);
     }
+    double getDutyInverter(sine_pwm_controller * pwm){
+        return pwm->getDutyCycle();
+    }
 }
