@@ -68,7 +68,7 @@ def execAll(time_div, time) :
     t = global_time_passed
     num_record = 0
     while(t < time + global_time_passed) : 
-        if(num_record % 1 == 0):
+        if(num_record % time == 0):
             recordNodes()
             simulation_time.append(t)
         for p in parts : 
@@ -303,6 +303,8 @@ class sine_source :
     amplitude = 0
     phase = 0
     offset  = 0
+    freq_from_node = False
+    freq_node = 0
     def __init__(self, f,node, amp, off, ph) :
         self.freq = f
         self.node_num = node
@@ -310,9 +312,14 @@ class sine_source :
         self.offset = off
         self.phase = ph
         parts.append(self)
-
+    def assignFreqNode(self, node):
+        self.freq_node = node
+        self.freq_from_node = True
     def Exec(self, time) :
-        putNodeVal(self.node_num, self.offset + self.amplitude * math.sin(self.freq * 2 * pi * time))
+        if(self.freq_from_node):
+            self.freq = 54.5 + 0.2 * getNodeValue(self.freq_node)
+
+        putNodeVal(self.node_num, self.offset + self.amplitude * math.sin(self.freq * 2 * pi * time + self.phase))
         
 
 

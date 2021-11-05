@@ -9,7 +9,7 @@ double gain = 1;
 extern "C" 
 {
     double * createNodes(int n){
-        nodes = (double *)malloc(n * sizeof(double));
+        nodes = (double *)calloc(n , sizeof(double));
         node_num = n;
         return nodes;
     }
